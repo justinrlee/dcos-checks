@@ -18,10 +18,14 @@ var defaultStateURL = url.URL{
 }
 
 // NewNodeInfo returns a new NodeInfo implementation.
-func NewNodeInfo(client *http.Client, role string, forceTLS bool) (nodeutil.NodeInfo, error) {
+func NewNodeInfo(client *http.Client, role, detectIP string, forceTLS bool) (nodeutil.NodeInfo, error) {
 	var options []nodeutil.Option
 	if forceTLS {
 		options = append(options, nodeutil.OptionMesosStateURL(defaultStateURL.String()))
+	}
+
+	if detectIP != "" {
+		options = append(options, nodeutil.OptionDetectIP(detectIP))
 	}
 
 	return nodeutil.NewNodeInfo(client, role, options...)

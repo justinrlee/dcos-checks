@@ -50,7 +50,7 @@ func (cli *CLIConfigFlags) IP(c *http.Client) (net.IP, error) {
 	}
 
 	// NodeIPStr is empty at this point. Now execute a command DetectIP variable.
-	nodeInfo, err := client.NewNodeInfo(c, cli.Role, cli.ForceTLS)
+	nodeInfo, err := client.NewNodeInfo(c, cli.Role, cli.DetectIP, cli.ForceTLS)
 	if err != nil {
 		return nil, err
 	}
