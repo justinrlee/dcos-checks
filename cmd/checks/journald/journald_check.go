@@ -91,7 +91,7 @@ func Add(root *cobra.Command) {
 }
 
 func (j *journalCheck) checkDirectory(path string, group uint32, groupBits map[string]uint32, 
-																			otherBits map[string]uint32) error {
+		otherBits map[string]uint32) error {
 	dirStat, err := os.Stat(path)
 	if err != nil {
 		return err
