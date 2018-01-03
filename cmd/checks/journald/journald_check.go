@@ -56,7 +56,7 @@ type journalCheck struct {
 var journaldCmd = &cobra.Command{
 	Use:   "journald",
 	Short: "Check journal folder ownership and permissions",
-	Long: `Check if the journal folder is owned by root:systemd-journal and has r-x group permissions, or if other has r-x permissions.
+	Long: `Check if users in the systemd-journal group have r-x permissions on the journal folder.
 
 If a user does not set the --path parameter, check will try to use default locations:
  - /var/log/journal
@@ -90,7 +90,8 @@ func Add(root *cobra.Command) {
 		"Set a path to systemd journal binary log directory.")
 }
 
-func (j *journalCheck) checkDirectory(path string, group uint32, groupBits map[string]uint32, otherBits map[string]uint32) error {
+func (j *journalCheck) checkDirectory(path string, group uint32, groupBits map[string]uint32, 
+																			otherBits map[string]uint32) error {
 	dirStat, err := os.Stat(path)
 	if err != nil {
 		return err
