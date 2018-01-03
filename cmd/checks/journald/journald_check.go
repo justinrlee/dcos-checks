@@ -30,13 +30,15 @@ import (
 const (
 	groupReadBit = 1 << 5
 	groupExecBit = 1 << 3
+	otherReadBit = 1 << 2
+	otherExecBit = 1 << 0
 
 	// systemdJournalGroup is a linux system group.
 	systemdJournalGroup = "systemd-journal"
 )
 
 type (
-	checkDirectoryFn func(string, uint32, map[string]uint32) error
+	checkDirectoryFn func(string, uint32, map[string]uint32, map[string]uint32) error
 )
 
 // journalCheck validates that the journal folder has he correct permissions and owners.
@@ -44,7 +46,8 @@ type journalCheck struct {
 	Path string
 
 	lookupGroup grp
-	checkBits   map[string]uint32
+	checkGroupBits   map[string]uint32
+	checkOtherBits   map[string]uint32
 
 	checkDirFn checkDirectoryFn
 }
@@ -52,8 +55,8 @@ type journalCheck struct {
 // journaldCmd represents the journald command
 var journaldCmd = &cobra.Command{
 	Use:   "journald",
-	Short: "Check if the journal folder ownership and permissions",
-	Long: `Check if the journal folder is owned by root:systemd-journal and has r-x group permissions.
+	Short: "Check journal folder ownership and permissions",
+	Long: `Check if the journal folder is owned by root:systemd-journal and has r-x group permissions, or if other has r-x permissions.
 
 If a user does not set the --path parameter, check will try to use default locations:
  - /var/log/journal
@@ -87,7 +90,7 @@ func Add(root *cobra.Command) {
 		"Set a path to systemd journal binary log directory.")
 }
 
-func (j *journalCheck) checkDirectory(path string, group uint32, bits map[string]uint32) error {
+func (j *journalCheck) checkDirectory(path string, group uint32, groupBits map[string]uint32, otherBits map[string]uint32) error {
 	dirStat, err := os.Stat(path)
 	if err != nil {
 		return err
@@ -98,23 +101,42 @@ func (j *journalCheck) checkDirectory(path string, group uint32, bits map[string
 	perm := dirStat.Mode().Perm()
 	logrus.Debugf("folder %s full permissions: %s", path, perm)
 
-	for description, bit := range bits {
-		if uint32(perm)&bit == 0 {
-			return errors.Errorf("directory %s has wrong permissions: %s bit must be set. \n%s",
-				path, description, helpMsg)
-		}
-	}
+	var otherError error = nil
+	var groupError error = nil
 
 	stat, ok := dirStat.Sys().(*syscall.Stat_t)
 	if !ok {
 		return errors.New("unable to type assert to syscall.Stat_t")
 	}
-	if stat.Gid != group {
-		return errors.Errorf("directory %s must be in group with Gid %d.%s", path, group, helpMsg)
-	}
-	logrus.Debug("directory is in the right group")
 
-	return nil
+	for description, bit := range otherBits {
+		if uint32(perm)&bit == 0 {
+			// otherValid = false
+			otherError = errors.Errorf("directory %s has wrong permissions: %s bit must be set. \n%s",
+				path, description, helpMsg)
+		}
+	}
+
+	for description, bit := range groupBits {
+		if uint32(perm)&bit == 0 {
+			// groupValid = false
+			groupError = errors.Errorf("directory %s has wrong permissions: %s bit must be set. \n%s",
+				path, description, helpMsg)
+		}
+	}
+
+	if stat.Gid != group {
+		// groupValid = false
+		groupError = errors.Errorf("directory %s must be in group with Gid %d.%s", path, group, helpMsg)
+	} else {
+		logrus.Debug("directory is in the right group")
+	}
+
+	if otherError != nil {
+		return groupError
+	}
+
+	return otherError
 }
 
 // ID returns a unique check identifier.
@@ -134,12 +156,12 @@ func (j *journalCheck) Run(ctx context.Context, cfg *common.CLIConfigFlags) (str
 		return "", 0, err
 	}
 
-	err = j.checkDirFn(j.Path, gid, j.checkBits)
+	err = j.checkDirFn(j.Path, gid, j.checkGroupBits, j.checkOtherBits)
 	if err != nil {
 		return "", constants.StatusUnknown, err
 	}
 
-	return fmt.Sprintf("directory %s has the group owner `systemd-journal` and group permissons r-x", j.Path),
+	return fmt.Sprintf("Users in group `systemd-journal` have r-x permissions on directory %s", j.Path),
 		constants.StatusOK, nil
 }
 
@@ -151,9 +173,14 @@ func newJournalCheck(p string) common.DCOSChecker {
 			name: systemdJournalGroup,
 		},
 
-		checkBits: map[string]uint32{
+		checkGroupBits: map[string]uint32{
 			"group r--": groupReadBit,
 			"group --x": groupExecBit,
+		},
+
+		checkOtherBits: map[string]uint32{
+			"group r--": otherReadBit,
+			"group --x": otherExecBit,
 		},
 	}
 
